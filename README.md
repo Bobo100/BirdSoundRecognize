@@ -34,13 +34,15 @@ Welcome to leave a message, I will try my best to answer
 
 I use crawler to grab all the bird sound files of [xeno-canto](https://xeno-canto.org/)
 
-# Process
+# ResNet
+
+## Process
 
 Please prepare the materials you want to train first and organize them
 
 The folder structure is as follows:
 
-```jsx
+```livescript
 \DATASET-DOWNLOAD\DATASET_INPUT_FOLDER_NAME
 |
 +---species1
@@ -85,3 +87,13 @@ However, the floating values of my method 2 training are large and I haven't fig
 Execute mytrain_resnet18_ver1.py
 
 will start training
+
+## Method 2
+
+not update
+
+# After
+
+Then I'll put the model on my phone and make instant predictions
+
+APP will be introduced in another project
