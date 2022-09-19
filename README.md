@@ -5,7 +5,7 @@ Here is the training stage for bird sound recognition
 
 I have prepared two versions which are resnet and efficientnet versions
 
-The resnet version refers to the code provided by the author [Stefan Kahl]([http://medien.informatik.tu-chemnitz.de/skahl/about/](http://medien.informatik.tu-chemnitz.de/skahl/about/)) on github to modify it to the tensorflow version
+The resnet version refers to the code provided by the author [Stefan Kahl](https://github.com/kahst/BirdCLEF-Baseline) on github to modify it to the tensorflow version
 
 And efficientnet is a reference [SOUND-BASED BIRD CLASSIFICATION. How group of Polish women used deep… | by Magdalena Kortas | Towards Data Science](https://towardsdatascience.com/sound-based-bird-classification-965d0ecacb2b)
 
