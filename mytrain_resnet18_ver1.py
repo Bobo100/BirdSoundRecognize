@@ -198,14 +198,22 @@ if __name__ == '__main__':
     img_height = 128
     img_width = 256
     
-    base_path = os.path.dirname(os.path.abspath(__file__))  #D:\Desktop\BirdCLEF-Baseline-master\My-Deep-Learning\dataset-download
-    TRAINSET_PATH = os.path.join("\\\?\\" + base_path, "dataset-download", "resnet_dataset")
-    DATASET_PATH = os.path.join(TRAINSET_PATH, 'spec_Taiwan bird_combine2')
+    base_path = os.path.dirname(os.path.abspath(__file__))  #D:\Desktop\BirdCLEF-Baseline-master\dataset-download
+    TRAINSET_PATH = os.path.join("\\\?\\" + base_path, "dataset-download")
+    
+    # dataset name
+    dataset_name = "dataset_output_folder_name"
+    
+    DATASET_PATH = os.path.join(TRAINSET_PATH, dataset_name)
     data_dir = DATASET_PATH
     
     # 創立的資料夾名稱 create folder name
-    create_folder_name = 'resnet_0813_Taiwan_combine2_batch32_Nadam'
+    create_folder_name = 'resnet_0919_test'
     # 創立的資料夾路徑 
+    create_folder_path = os.path.join(base_path, "my-model-save", "resnet")
+    if not os.path.isdir(create_folder_path):
+        os.mkdir(create_folder_path)
+    
     create_folder_path = os.path.join(base_path, "my-model-save", "resnet", create_folder_name)
     if not os.path.isdir(create_folder_path):
         os.mkdir(create_folder_path)

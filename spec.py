@@ -44,9 +44,6 @@ def getSpecs(path):
 
     return specs, noise
 
-# audio_folder = "less20_mp3"
-# less20_mp3 folder_test
-
 def parseDataset():
 
     # List of classes, subfolders as class names

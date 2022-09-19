@@ -8,8 +8,8 @@ mp3_dir =  os.path.join(base_path, "mp3") #D:\Desktop\BirdCLEF-Baseline-master\M
 wav_dir = os.path.join(base_path, "wav") #D:\Desktop\BirdCLEF-Baseline-master\My-Deep-Learning\dataset-download\wav
 
 # your folder path
-input_mp3_folder = os.path.join(base_path, "Taiwan bird_mp3")
-output_wav_folder = os.path.join(base_path, "Taiwan bird_wav")
+input_mp3_folder = os.path.join(base_path, "dataset_input_folder_name_mp3")
+output_wav_folder = os.path.join(base_path, "dataset_input_folder_name_wav")
 
 covertfolder_mp3 = input_mp3_folder
 covertfolder_wav = output_wav_folder

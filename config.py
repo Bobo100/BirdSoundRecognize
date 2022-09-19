@@ -21,10 +21,15 @@ def getRandomState():
 # DATASET_PATH = os.path.join(TRAINSET_PATH, 'spec')
 # NOISE_PATH = os.path.join(TRAINSET_PATH, 'noise')
 # METADATA_PATH = os.path.join(TRAINSET_PATH, 'metadata')
-TRAINSET_PATH = 'dataset-download/resnet_dataset/'
-DATASET_PATH = os.path.join(TRAINSET_PATH, 'spec_less20_new')
-NOISE_PATH = os.path.join(TRAINSET_PATH, 'spec_less20_newnoise')
+
+TRAINSET_PATH = 'dataset-download/'
+# input folder
+AUDIO_FOLDER = "dataset_input_folder_name"
+# output folder
+DATASET_PATH = os.path.join(TRAINSET_PATH, 'dataset_output_folder_name')
+NOISE_PATH = os.path.join(TRAINSET_PATH, 'dataset_output_folder_name_new_noise')
 METADATA_PATH = os.path.join(TRAINSET_PATH, 'metadata')
+
 
 # Set this path to 'val', 'BirdCLEF2018MonophoneTest' or 'BirdCLEF2018SoundscapesTest' depending on which dataset you want to analyze
 TESTSET_PATH = os.path.join(TRAINSET_PATH, 'val')
