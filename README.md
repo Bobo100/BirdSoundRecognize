@@ -30,6 +30,8 @@ If there is a situation where it cannot be implemented
 
 Welcome to leave a message, I will try my best to answer
 
+Model used in smartphone [Link](https://github.com/Bobo100/BirdSoundRecognizeAPP)
+
 # Dataset
 
 I use crawler to grab all the bird sound files of [xeno-canto](https://xeno-canto.org/)
