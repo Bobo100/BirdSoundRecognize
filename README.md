@@ -30,7 +30,10 @@ If there is a situation where it cannot be implemented
 
 Welcome to leave a message, I will try my best to answer
 
-Model used in smartphone [Link](https://github.com/Bobo100/BirdSoundRecognizeAPP)
+The flow chart of the system is as follows:
+![alt text](image/model%20flow%20chart.png "dataset_path")
+
+Model used in smartphone / APP link [Link](https://github.com/Bobo100/BirdSoundRecognizeAPP)
 
 # Dataset
 
