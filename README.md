@@ -1,105 +1,114 @@
-# BirdSoundRecognize
-# Introduce
+# 🐦 BirdSoundRecognize
 
-Here is the training stage for bird sound recognition
+> Deep learning pipeline for bird species identification from audio recordings — a master's thesis project using mel-spectrograms and a custom ResNet architecture.
 
-I have prepared two versions which are resnet and efficientnet versions
+<p align="center">
+  <img src="image/model%20flow%20chart.png" alt="System flow chart" width="720">
+</p>
 
-The resnet version refers to the code provided by the author [Stefan Kahl](https://github.com/kahst/BirdCLEF-Baseline) on github to modify it to the tensorflow version
+**Companion mobile app:** [bird-sound-recognize-app](https://github.com/Bobo100/bird-sound-recognize-app) — runs the trained TFLite model on Android for real-time on-device inference.
 
-And efficientnet is a reference [SOUND-BASED BIRD CLASSIFICATION. How group of Polish women used deep… | by Magdalena Kortas | Towards Data Science](https://towardsdatascience.com/sound-based-bird-classification-965d0ecacb2b)
+---
 
-Both work in the context of win10
+## What it does
 
-python version is 3.7.10
+1. **Crawls** bird recordings from [xeno-canto](https://xeno-canto.org/).
+2. **Converts** audio (mp3 → wav) and extracts **mel-spectrograms** as 256×128 single-channel images.
+3. **Trains** a custom ResNet-style CNN (Keras / TensorFlow) to classify species from spectrograms.
+4. **Exports** the model for deployment on a companion Android app.
 
-| Equipment             |           |
-|-----------------------|-----------|
-| System                | Window 10 |
-| CPU                   | intel i7-6700   |
-| GPU                   | GTX 1070  |
-| CUDA                  | 8.0       |
-| cuDNN                 | 7.5       |
-| RAM                   | 24GB      |
-| Development Platform  | Anaconda  |
-| Programming Language  | Python    |
+## Tech stack
 
+| Layer | Tool |
+|---|---|
+| Framework | TensorFlow / Keras |
+| Architecture | Custom ResNet (configurable filters, kernel sizes, ResBlocks) |
+| Audio features | Mel-spectrogram (`librosa`-style), 44.1 kHz, 500–15000 Hz |
+| Data augmentation | Vertical roll + additive noise samples |
+| Optimizer | Adam, cosine LR schedule (0.001 → 1e-6) |
+| Training | 60 epochs, batch size 32, early stopping at 10 |
+| Language | Python 3.7.10 |
 
+Tested on Windows 10, i7-6700, GTX 1070, CUDA 8.0, cuDNN 7.5, 24GB RAM.
 
-If there is a situation where it cannot be implemented
+## Repository structure
 
-Welcome to leave a message, I will try my best to answer
-
-The flow chart of the system is as follows:
-![alt text](image/model%20flow%20chart.png "dataset_path")
-
-Model used in smartphone / APP link [Link](https://github.com/Bobo100/BirdSoundRecognizeAPP)
-
-# Dataset
-
-I use crawler to grab all the bird sound files of [xeno-canto](https://xeno-canto.org/)
-
-# ResNet
-
-## Process
-
-Please prepare the materials you want to train first and organize them
-
-The folder structure is as follows:
-
-```livescript
-\DATASET-DOWNLOAD\DATASET_INPUT_FOLDER_NAME
-|
-+---species1
-|       species1_1.wav
-|       species1_2.wav     
-+---species2
-|       species2_1.wav
-|       species2_2.wav
+```
+.
+├── config.py                   # All hyperparameters and paths (single source of truth)
+├── spec.py                     # Extract mel-spectrograms from wav files
+├── mytrain_resnet18_ver1.py    # Main training script (ResNet-18 variant)
+├── model_details.py            # Model architecture helpers + GPU setup
+├── dataset-download/
+│   ├── mp3_to_wav.py           # Audio format conversion utility
+│   ├── dataset_input_folder_name/      # Place raw wav files here, organized by species
+│   └── dataset_output_folder_name/     # Generated spectrograms land here
+├── utils/                      # Audio I/O, batch generation, metrics, logging
+└── image/                      # README assets
 ```
 
+## Quick start
 
-Then extract features (the settings here use the settings of [Stefan Kahl](https://github.com/kahst/BirdCLEF-Baseline))
+### 1. Prepare the dataset
 
-First open config.py to change the path of data set input and output
+Organize your audio files by species (any number of classes):
 
-![alt text](image/config%20folder%20path.PNG "dataset_path")
+```
+dataset-download/dataset_input_folder_name/
+├── species1/
+│   ├── species1_1.wav
+│   └── species1_2.wav
+└── species2/
+    ├── species2_1.wav
+    └── species2_2.wav
+```
 
-Then you can execute spec.py to extract features
+If your files are mp3, convert them first:
 
-Note: The file for extracting features must be in wav format
+```bash
+cd dataset-download
+python mp3_to_wav.py   # remember to edit the mp3 folder path inside
+```
 
-If it is mp3 format, it needs to be converted
+### 2. Configure paths
 
-Please go to the dataset dataset-download and execute mp3_to_wav.py
+Open [`config.py`](./config.py) and adjust the dataset paths near the top (`TRAINSET_PATH`, `AUDIO_FOLDER`, `DATASET_PATH`).
 
-Remember to modify the path of the mp3 folder
+### 3. Extract spectrograms
 
-After extracting features
+```bash
+python spec.py
+```
 
-Then can be trained
+This generates mel-spectrograms (256×128) under `dataset_output_folder_name/`.
 
-There are two approaches here, the difference is the speed of training and accuracy
+### 4. Train
 
-The first method is to use the image file just output directly as input to train
+```bash
+python mytrain_resnet18_ver1.py
+```
 
-The second method is to make the image file just output into tfrecord for training
+Snapshots are saved under `snapshots/` every epoch; final results land in `BirdCLEF_Logfile.txt`.
 
-However, the floating values of my method 2 training are large and I haven't figured out why
+## How it works
 
+1. **Audio → image**: each clip is split into 1.0s windows (0.25s overlap), converted to mel-spectrograms in the 500–15000 Hz band, normalized to a fixed 256×128 image.
+2. **Noise vs signal**: chunks below a signal threshold are routed to a noise pool and used later for augmentation rather than discarded.
+3. **Model**: a ResNet-style CNN built from configurable residual stacks. Filter sizes, kernel sizes, and stack depths are all hyperparameters in `config.py`.
+4. **Output**: per-species probability distribution. The mobile companion app runs this model on-device as TFLite for real-time predictions.
 
-## Method 1
-Execute mytrain_resnet18_ver1.py
+## Status
 
-will start training
+This project was part of a master's thesis (2022). It is **not actively maintained**, but the pipeline is reproducible end-to-end on the environment listed above. Issues and questions are welcome — I'll respond when I can.
 
-## Method 2
+## Acknowledgements & references
 
-not update
+This codebase adapts work from prior research:
 
-# After
+- **ResNet pipeline & spectrogram extraction** — adapted from [Stefan Kahl's BirdCLEF-Baseline](https://github.com/kahst/BirdCLEF-Baseline) (originally Lasagne; rewritten here for TensorFlow / Keras).
+- **EfficientNet variant** — inspired by [_Sound-based Bird Classification_](https://towardsdatascience.com/sound-based-bird-classification-965d0ecacb2b) by Magdalena Kortas.
+- **Dataset** — [xeno-canto](https://xeno-canto.org/), a community-curated archive of wildlife sounds.
 
-Then I'll put the model on my phone and make instant predictions
+## License
 
-APP will be introduced in another project
-(https://github.com/Bobo100/BirdSoundRecognizeAPP)
+Released for academic and educational use. The adapted portions retain their original authors' licenses; see linked sources above.
