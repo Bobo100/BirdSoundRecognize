@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.bak
+.venv/
+venv/
+
+# Training outputs (models/resnet_0919_test is the committed reference model)
+models/*/checkpoints/
+models/*/training_log.csv
+
+# Conversion error logs
+conversion_errors.txt
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
