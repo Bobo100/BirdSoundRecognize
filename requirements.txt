@@ -1,8 +1,9 @@
 # Python >= 3.10
-tensorflow>=2.16
+tensorflow>=2.21  # tested version; TFLite export of Keras 3 models is broken in early 2.16.x
 keras>=3.0
 numpy
 librosa
 opencv-python
 scikit-learn
 pydub  # convert_mp3.py only; also needs ffmpeg on PATH
+audioop-lts; python_version >= '3.13'  # pydub needs audioop, removed in Python 3.13

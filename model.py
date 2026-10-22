@@ -31,8 +31,8 @@ def residual_block(net_in, filters, kernel_size, stride=1, preactivated=True):
                         kernel_initializer=keras.initializers.HeNormal(),
                         activation=None)(net)
 
-    # Project the shortcut when the number of channels changes
-    if net.shape[-1] != net_sc.shape[-1]:
+    # Project the shortcut when the number of channels or the spatial size changes
+    if stride != 1 or net.shape[-1] != net_sc.shape[-1]:
         shortcut = layers.Conv2D(filters,
                                  kernel_size=(1, 1),
                                  padding='same',

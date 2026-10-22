@@ -71,7 +71,8 @@ KERNEL_SIZE = (3, 3)
 #######################  TRAINING  ########################
 
 # Folder under models/ where checkpoints, logs and the exported model are written
-RUN_NAME = 'resnet_0919_test'
+# (models/resnet_0919_test is the committed reference model; use a new name to keep it intact)
+RUN_NAME = 'resnet_run'
 MODEL_PATH = os.path.join(BASE_PATH, 'models', RUN_NAME)
 
 # Prefix of the exported files (<prefix>_model.tflite, <prefix>_labels.txt)

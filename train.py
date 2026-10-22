@@ -28,7 +28,7 @@ def load_datasets():
     return train_ds, val_ds
 
 
-def build_callbacks(class_names, checkpoint_path):
+def build_callbacks(class_names, checkpoint_path, resume):
     callbacks = [
         keras.callbacks.ModelCheckpoint(os.path.join(checkpoint_path, training.CHECKPOINT_PATTERN),
                                         save_freq='epoch',
@@ -37,7 +37,7 @@ def build_callbacks(class_names, checkpoint_path):
                                           factor=cfg.LR_REDUCE_FACTOR,
                                           patience=cfg.LR_REDUCE_PATIENCE,
                                           min_lr=cfg.LR_MIN),
-        keras.callbacks.CSVLogger(os.path.join(cfg.MODEL_PATH, 'training_log.csv'), append=True),
+        keras.callbacks.CSVLogger(os.path.join(cfg.MODEL_PATH, 'training_log.csv'), append=resume),
         training.ExportTFLite(class_names, cfg.MODEL_PATH, cfg.EXPORT_NAME),
     ]
 
@@ -64,6 +64,16 @@ def main():
     if last_checkpoint:
         print(f'Resuming from {last_checkpoint}')
         model = keras.models.load_model(last_checkpoint)
+        # The checkpoint's outputs must map to the same species as the current dataset
+        labels_path = os.path.join(cfg.MODEL_PATH, cfg.EXPORT_NAME + '_labels.txt')
+        if os.path.exists(labels_path):
+            with open(labels_path, encoding='utf-8') as f:
+                saved_names = f.read().split('\n')
+        else:
+            saved_names = None
+        if model.output_shape[-1] != len(class_names) or (saved_names is not None and saved_names != class_names):
+            raise SystemExit(f'The classes in {cfg.DATASET_PATH} differ from the ones {last_checkpoint} was trained on; '
+                             f'set a new RUN_NAME in config.py to start a new run.')
     else:
         model = build_resnet(len(class_names))
         model.compile(optimizer=cfg.OPTIMIZER,
@@ -76,7 +86,7 @@ def main():
               initial_epoch=initial_epoch,
               class_weight=class_weights,
               validation_data=val_ds,
-              callbacks=build_callbacks(class_names, checkpoint_path))
+              callbacks=build_callbacks(class_names, checkpoint_path, resume=last_checkpoint is not None))
 
 
 if __name__ == '__main__':

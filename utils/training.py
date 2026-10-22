@@ -9,6 +9,9 @@ import tensorflow as tf
 
 
 def use_gpu():
+    # Use the first GPU only, unless CUDA_VISIBLE_DEVICES is already set
+    os.environ.setdefault('CUDA_VISIBLE_DEVICES', '0')
+
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
         try:
@@ -37,7 +40,8 @@ def compute_class_weights(file_paths, class_names, mu=0.15):
 
     class_weight = {}
     for index, name in enumerate(class_names):
-        score = math.log(mu * total / counts[name]) if counts[name] else 1.0
+        # A class with no training samples is treated as having one
+        score = math.log(mu * total / max(counts[name], 1))
         class_weight[index] = max(score, 1.0)
 
     return class_weight
@@ -76,8 +80,11 @@ def save_tflite(model, class_names, model_path, model_name):
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     tflite_model = converter.convert()
 
-    with open(os.path.join(model_path, model_name + '_model.tflite'), 'wb') as f:
+    # Write to a temp file first so an interrupted run never leaves a truncated model
+    tflite_path = os.path.join(model_path, model_name + '_model.tflite')
+    with open(tflite_path + '.tmp', 'wb') as f:
         f.write(tflite_model)
+    os.replace(tflite_path + '.tmp', tflite_path)
 
     # Labels in the same order as the model outputs
     with open(os.path.join(model_path, model_name + '_labels.txt'), 'w', encoding='utf-8') as f:

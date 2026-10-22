@@ -81,6 +81,35 @@ my-model-save/resnet/resnet_0919_test/   →  models/resnet_0919_test/
 - **訓練流程**：範例資料跑 2 個 epoch → 改 `EPOCHS=3` 再執行，確認從 `weights.02.keras` 續訓、`training_log.csv` 接續、TFLite 輸入 `[1,128,256,1]` 與參考模型一致。
 - **class weight bug 重現**：類別 A/B/C 各 10/1000/50 張並打亂。舊程式的 dict 順序變成 `B, C, A`，最稀少的 A（index 0）拿到權重 1.0；新程式給 A 2.77、B 1.0、C 1.16。
 
+## Code review 與對抗性驗證後的修正
+
+PR 開出後補做了 code review 和對抗性驗證（另開一個獨立驗證者，不給它結論，只要求它想辦法推翻 PR 的每一項宣稱）。
+
+### 修正
+| 來源 | 問題 | 修正 |
+|---|---|---|
+| review | 預設 `RUN_NAME='resnet_0919_test'`，一跑訓練就會蓋掉 commit 進來的參考模型 | 預設改成 `resnet_run` |
+| review + 對抗 | 續訓時資料集的類別若有增減／改名，checkpoint 的輸出會靜默對到錯的鳥種（和 class weight bug 同一類問題） | 續訓前比對輸出數量和已存的 `*_labels.txt`，不一致就停止並提示換 `RUN_NAME` |
+| review | `CSVLogger` 不管是不是新的訓練都用 append，會混到舊紀錄 | 只有續訓時才 append |
+| review | 訓練集裡沒有樣本的類別拿到最小權重 1.0 | 當作 1 個樣本計算，因此拿到最大權重 |
+| review | `tensorflow>=2.16` 的早期版本無法把 Keras 3 模型轉成 TFLite | 下限改成實測過的 2.21 |
+| review | 每個 epoch 直接覆寫 tflite，中斷時可能留下壞檔 | 先寫暫存檔，再用 `os.replace` |
+| review | 自訂 `FILTERS` 讓 stride 2 時通道數不變的話，shortcut 形狀會對不上 | stride≠1 時也做投影（預設設定的架構不變，已重新比對） |
+| review | 輸入資料夾根目錄的 mp3 會轉到 `data/audio/` 根目錄，然後被忽略 | 略過並提示放進物種子資料夾 |
+| review | 轉檔失敗會留下不完整的 wav，下次也不會重試 | 失敗時刪掉 |
+| 對抗 | **Python 3.13 移除了 `audioop`，pydub 一 import 就失敗** | requirements 加上 `audioop-lts` |
+| 對抗 | 輸入路徑不存在時仍印出 done、回傳成功 | 改成報錯 |
+| 對抗 | 舊版 `use_gpu()` 會設定 `CUDA_VISIBLE_DEVICES='0'`，新版漏掉了 | 加回來，改用 `setdefault`，可以從外部覆寫 |
+
+### 判定不修
+- checkpoint 檔名的 regex 和 `CHECKPOINT_PATTERN` 各寫一份；最新的 checkpoint 損壞時不會退回前一個 → 很少遇到，加了會增加複雜度。
+- 轉檔時按 Ctrl-C 留下的不完整 wav、錯誤 log 重複寫入 → 舊版也一樣，影響很小。
+- TFLite 轉換時會印出大量 `TensorSpec` 訊息 → 只是輸出太多，不影響功能。
+- `data/specs/` 內附的 3 張範例圖來自不在 `data/audio/` 的錄音 → 只是範例，執行 `extract_specs.py` 後就會被正常資料蓋過去。
+
+### 對抗性驗證確認成立的宣稱
+模型架構逐層相同（n=3 和 n=610 都比對過，包含拓撲）、頻譜 PNG 逐位元相同、舊版 class weight 確實錯位、TFLite I/O 和 op 數量與參考模型一致、超參數和舊訓練腳本一致、`ReduceLROnPlateau` 會實際觸發（0.001 → 0.0003）。
+
 ## 未來可以做的（這次沒做）
 - 把資料增強真的接進訓練（`data/noise/` 混音、vertical roll）。
 - 用修正後的 class weight 重新訓練，和 `models/resnet_0919_test` 比較準確率。
