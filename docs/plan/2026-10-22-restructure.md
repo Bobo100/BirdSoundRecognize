@@ -65,6 +65,8 @@ my-model-save/resnet/resnet_0919_test/   →  models/resnet_0919_test/
 - **設定**：`train.py` 改讀 `config.py`；`config.py` 的值設成**原本訓練腳本實際使用的值**（Nadam、val split 0.2、`FILTERS=[16,32,64,128]`、`RESNET_K=2`、`RESNET_N=2`…）。
 - **Early stopping**：新增 `EARLY_STOPPING_PATIENCE` 設定，預設 `None`（關閉），與原本行為一致。
 - **路徑**：全部改成 `os.path`，移除 Windows 專用寫法。若 Windows 上遇到長路徑問題，請開啟系統的 `LongPathsEnabled`。
+- **`utils/audio.py` 小修**：`melspec` 中 `mlspec` 拼字錯誤（全零頻譜時寫錯變數，實際無影響）；`stft` 的 `window='hamm'` 改成 `'hamming'`（新版 scipy 已移除別名）；`signal2noise` 用 `spec.size` 取代 try/except 計算面積（結果相同）。
+- **`convert_mp3.py`**：改用命令列參數指定資料夾，移除沒被呼叫的 `remove_bird_folder()`。
 - **相依套件**：更新到目前的 TensorFlow / Keras 3。checkpoint 由 SavedModel 資料夾（`.ckpt/`）改成 `.keras` 檔（Keras 3 規定的格式）。
 
 ### 刻意保留不變
@@ -72,6 +74,12 @@ my-model-save/resnet/resnet_0919_test/   →  models/resnet_0919_test/
 - 輸入格式：`128×256×1` 灰階、像素值 **0–255、不做 rescale**。Android app 端就是餵 0–255，若改成正規化 app 會壞掉。
 - 頻譜產生參數（44.1 kHz、1 秒切片、0.25 秒 overlap、500–15000 Hz mel）。
 - 雜訊片段仍會存到 `data/noise/`（原設計用於增強），但目前訓練沒有用到，README 已註明。
+
+## 驗證方式（TensorFlow 2.21 / Keras 3.15 / Python 3.13）
+- **模型架構**：用舊版 `resnet_18()` 與新版 `build_resnet()` 各建一個模型，59 層的設定逐層相同、參數量都是 2,796,355。
+- **頻譜**：用 repo 內的範例音檔，舊版 `spec.py` 與新版 `extract_specs.py` 產生的 334 張 PNG 逐位元相同。
+- **訓練流程**：範例資料跑 2 個 epoch → 改 `EPOCHS=3` 再執行，確認從 `weights.02.keras` 續訓、`training_log.csv` 接續、TFLite 輸入 `[1,128,256,1]` 與參考模型一致。
+- **class weight bug 重現**：類別 A/B/C 各 10/1000/50 張並打亂。舊程式的 dict 順序變成 `B, C, A`，最稀少的 A（index 0）拿到權重 1.0；新程式給 A 2.77、B 1.0、C 1.16。
 
 ## 未來可以做的（這次沒做）
 - 把資料增強真的接進訓練（`data/noise/` 混音、vertical roll）。

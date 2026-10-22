@@ -12,101 +12,108 @@
 
 ## What it does
 
-1. **Crawls** bird recordings from [xeno-canto](https://xeno-canto.org/).
-2. **Converts** audio (mp3 → wav) and extracts **mel-spectrograms** as 256×128 single-channel images.
+1. **Converts** bird recordings (e.g. from [xeno-canto](https://xeno-canto.org/)) from mp3 to wav.
+2. **Extracts** mel-spectrograms as 256×128 grayscale images.
 3. **Trains** a custom ResNet-style CNN (Keras / TensorFlow) to classify species from spectrograms.
-4. **Exports** the model for deployment on a companion Android app.
+4. **Exports** the model as TFLite for the companion Android app.
 
 ## Tech stack
 
 | Layer | Tool |
 |---|---|
-| Framework | TensorFlow / Keras |
-| Architecture | Custom ResNet (configurable filters, kernel sizes, ResBlocks) |
-| Audio features | Mel-spectrogram (`librosa`-style), 44.1 kHz, 500–15000 Hz |
-| Data augmentation | Vertical roll + additive noise samples |
-| Optimizer | Adam, cosine LR schedule (0.001 → 1e-6) |
-| Training | 60 epochs, batch size 32, early stopping at 10 |
-| Language | Python 3.7.10 |
+| Framework | TensorFlow / Keras 3 |
+| Architecture | Custom pre-activation ResNet (4 stacks × 2 ResBlocks, filters 32–256) |
+| Audio features | Mel-spectrogram (`librosa`), 44.1 kHz, 1 s windows, 500–15000 Hz |
+| Optimizer | Nadam, `ReduceLROnPlateau` on validation loss |
+| Imbalance handling | Log-smoothed class weights |
 
-Tested on Windows 10, i7-6700, GTX 1070, CUDA 8.0, cuDNN 7.5, 24GB RAM.
+The original 2022 runs used Python 3.7 on Windows 10 (i7-6700, GTX 1070). The code now runs on any OS with Python ≥ 3.10.
 
 ## Repository structure
 
 ```
 .
-├── config.py                   # All hyperparameters and paths (single source of truth)
-├── spec.py                     # Extract mel-spectrograms from wav files
-├── mytrain_resnet18_ver1.py    # Main training script (ResNet-18 variant)
-├── model_details.py            # Model architecture helpers + GPU setup
-├── dataset-download/
-│   ├── mp3_to_wav.py           # Audio format conversion utility
-│   ├── dataset_input_folder_name/      # Place raw wav files here, organized by species
-│   └── dataset_output_folder_name/     # Generated spectrograms land here
-├── utils/                      # Audio I/O, batch generation, metrics, logging
-└── image/                      # README assets
+├── config.py           # All paths and hyperparameters
+├── convert_mp3.py      # mp3 → wav conversion
+├── extract_specs.py    # wav → mel-spectrogram PNGs
+├── train.py            # Training loop, checkpoints, TFLite export
+├── model.py            # ResNet architecture
+├── utils/
+│   ├── audio.py        # Audio loading, chunking, spectrograms, signal-to-noise
+│   ├── training.py     # Class weights, checkpoint resume, TFLite export
+│   └── log.py
+├── data/
+│   ├── audio/          # Input wav files, one folder per species (3 sample species included)
+│   ├── specs/          # Generated spectrograms, one folder per species
+│   └── noise/          # Rejected low-signal spectrograms
+├── models/
+│   └── resnet_0919_test/   # Reference TFLite model + labels
+├── docs/plan/          # Records of why the project was changed
+└── image/              # README assets
 ```
 
 ## Quick start
+
+```bash
+pip install -r requirements.txt
+```
 
 ### 1. Prepare the dataset
 
 Organize your audio files by species (any number of classes):
 
 ```
-dataset-download/dataset_input_folder_name/
+data/audio/
 ├── species1/
 │   ├── species1_1.wav
 │   └── species1_2.wav
 └── species2/
-    ├── species2_1.wav
-    └── species2_2.wav
+    └── species2_1.wav
 ```
 
-If your files are mp3, convert them first:
+If your files are mp3 (needs `ffmpeg`), convert them first:
 
 ```bash
-cd dataset-download
-python mp3_to_wav.py   # remember to edit the mp3 folder path inside
+python convert_mp3.py path/to/mp3_folder        # writes to data/audio/
 ```
 
-### 2. Configure paths
-
-Open [`config.py`](./config.py) and adjust the dataset paths near the top (`TRAINSET_PATH`, `AUDIO_FOLDER`, `DATASET_PATH`).
-
-### 3. Extract spectrograms
+### 2. Extract spectrograms
 
 ```bash
-python spec.py
+python extract_specs.py
 ```
 
-This generates mel-spectrograms (256×128) under `dataset_output_folder_name/`.
-
-### 4. Train
+### 3. Train
 
 ```bash
-python mytrain_resnet18_ver1.py
+python train.py
 ```
 
-Snapshots are saved under `snapshots/` every epoch; final results land in `BirdCLEF_Logfile.txt`.
+Everything is written to `models/<RUN_NAME>/`:
+
+| File | Content |
+|---|---|
+| `checkpoints/weights.NN.keras` | Full model after every epoch |
+| `training_log.csv` | Loss / accuracy per epoch |
+| `resnet_model.tflite`, `resnet_labels.txt` | Latest model for the Android app |
+
+Running `train.py` again resumes from the newest checkpoint. Change `RUN_NAME` in `config.py` to start a new run.
 
 ## How it works
 
-1. **Audio → image**: each clip is split into 1.0s windows (0.25s overlap), converted to mel-spectrograms in the 500–15000 Hz band, normalized to a fixed 256×128 image.
-2. **Noise vs signal**: chunks below a signal threshold are routed to a noise pool and used later for augmentation rather than discarded.
-3. **Model**: a ResNet-style CNN built from configurable residual stacks. Filter sizes, kernel sizes, and stack depths are all hyperparameters in `config.py`.
-4. **Output**: per-species probability distribution. The mobile companion app runs this model on-device as TFLite for real-time predictions.
+1. **Audio → image**: each clip is split into 1.0 s windows (0.25 s overlap) and converted to a mel-spectrogram in the 500–15000 Hz band, normalized to a 256×128 image.
+2. **Noise vs signal**: chunks below a signal threshold are rejected; 10 % of them are kept in `data/noise/` (intended for noise augmentation, which the current training does not use).
+3. **Model**: a pre-activation ResNet. Filter counts, kernel size and stack depth are set in `config.py`.
+4. **Input format**: `128 × 256 × 1` grayscale with pixel values in **[0, 255]** (no rescaling) — the Android app feeds the model in the same range.
+5. **Output**: softmax probability per species; label order is in `*_labels.txt`.
 
 ## Status
 
-This project was part of a master's thesis (2022). It is **not actively maintained**, but the pipeline is reproducible end-to-end on the environment listed above. Issues and questions are welcome — I'll respond when I can.
+This project was part of a master's thesis (2022) and is **not actively maintained**. In 2026 the code was restructured and a class-weight bug was fixed; the reasoning is recorded in [`docs/plan/`](docs/plan/). The included reference model was trained before that fix.
 
 ## Acknowledgements & references
 
-This codebase adapts work from prior research:
-
-- **ResNet pipeline & spectrogram extraction** — adapted from [Stefan Kahl's BirdCLEF-Baseline](https://github.com/kahst/BirdCLEF-Baseline) (originally Lasagne; rewritten here for TensorFlow / Keras).
-- **EfficientNet variant** — inspired by [_Sound-based Bird Classification_](https://towardsdatascience.com/sound-based-bird-classification-965d0ecacb2b) by Magdalena Kortas.
+- **Spectrogram extraction & ResNet design** — adapted from [Stefan Kahl's BirdCLEF-Baseline](https://github.com/kahst/BirdCLEF-Baseline) (originally Lasagne; rewritten here for TensorFlow / Keras).
 - **Dataset** — [xeno-canto](https://xeno-canto.org/), a community-curated archive of wildlife sounds.
 
 ## License
