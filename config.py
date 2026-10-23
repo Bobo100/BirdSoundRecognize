@@ -42,8 +42,9 @@ SPEC_LENGTH = 1.0
 SPEC_OVERLAP = 0.25
 SPEC_MINLEN = 1.0
 
-# STFT edge padding. librosa's default changed from 'reflect' to 'constant' in 0.9.0 (Feb 2022);
-# the Android apps (JLibrosa) pad with 'reflect', so keep this in sync with them
+# STFT edge padding. Unlike the values above, this one is NOT known from the thesis run:
+# librosa's default changed from 'reflect' to 'constant' in 0.9.0 (Feb 2022). 'reflect' matches
+# the Android apps' JLibrosa (with the 2026-10-23 feature fixes); see docs/plan/2026-10-22-restructure.md
 SPEC_PAD_MODE = 'reflect'
 
 # Threshold for distinction between noise and signal

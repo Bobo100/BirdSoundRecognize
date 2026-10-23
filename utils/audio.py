@@ -87,7 +87,7 @@ def stft(sig, rate, shape=(128, 256), fmin=500, fmax=15000, normalize=True, pad_
     spec = librosa.stft(sig, hop_length=HOP_LEN, n_fft=N_FFT, window='hamming', pad_mode=pad_mode)
 
     # Convert power spec to dB scale (compute dB relative to peak power)
-    spec = librosa.amplitude_to_db(librosa.core.magphase(spec)[0], ref=np.max, top_db=80)
+    spec = librosa.amplitude_to_db(librosa.magphase(spec)[0], ref=np.max, top_db=80)
 
     # Trim to desired shape using cutoff frequencies
     spec = spec[P_MIN:P_MAX, :shape[1]]

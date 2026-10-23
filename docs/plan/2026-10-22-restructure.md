@@ -72,12 +72,12 @@ my-model-save/resnet/resnet_0919_test/   →  models/resnet_0919_test/
 ### 刻意保留不變
 - 模型架構逐層相同（已比對新舊版的層設定與參數量）。
 - 輸入格式：`128×256×1` 灰階、像素值 **0–255、不做 rescale**。Android app 端就是餵 0–255，若改成正規化 app 會壞掉。
-- 頻譜產生參數（44.1 kHz、1 秒切片、0.25 秒 overlap、500–15000 Hz mel）。
+- 頻譜產生參數（44.1 kHz、1 秒切片、0.25 秒 overlap、500–15000 Hz mel）。（STFT 的邊界補值方式之後有明確指定，見文末「追加」）
 - 雜訊片段仍會存到 `data/noise/`（原設計用於增強），但目前訓練沒有用到，README 已註明。
 
 ## 驗證方式（TensorFlow 2.21 / Keras 3.15 / Python 3.13）
 - **模型架構**：用舊版 `resnet_18()` 與新版 `build_resnet()` 各建一個模型，59 層的設定逐層相同、參數量都是 2,796,355。
-- **頻譜**：用 repo 內的範例音檔，舊版 `spec.py` 與新版 `extract_specs.py` 產生的 334 張 PNG 逐位元相同。
+- **頻譜**：用 repo 內的範例音檔，舊版 `spec.py` 與新版 `extract_specs.py` 產生的 334 張 PNG 逐位元相同（同樣的 librosa 1.0）。⚠️ 2026-10-23 起預設 `SPEC_PAD_MODE='reflect'`，輸出已經不同；設成 `'constant'` 才會和這裡的結果相同，見文末「追加」。
 - **訓練流程**：範例資料跑 2 個 epoch → 改 `EPOCHS=3` 再執行，確認從 `weights.02.keras` 續訓、`training_log.csv` 接續、TFLite 輸入 `[1,128,256,1]` 與參考模型一致。
 - **class weight bug 重現**：類別 A/B/C 各 10/1000/50 張並打亂。舊程式的 dict 順序變成 `B, C, A`，最稀少的 A（index 0）拿到權重 1.0；新程式給 A 2.77、B 1.0、C 1.16。
 
@@ -108,20 +108,24 @@ PR 開出後補做了 code review 和對抗性驗證（另開一個獨立驗證�
 - `data/specs/` 內附的 3 張範例圖來自不在 `data/audio/` 的錄音 → 只是範例，執行 `extract_specs.py` 後就會被正常資料蓋過去。
 
 ### 對抗性驗證確認成立的宣稱
-模型架構逐層相同（n=3 和 n=610 都比對過，包含拓撲）、頻譜 PNG 逐位元相同、舊版 class weight 確實錯位、TFLite I/O 和 op 數量與參考模型一致、超參數和舊訓練腳本一致、`ReduceLROnPlateau` 會實際觸發（0.001 → 0.0003）。
+模型架構逐層相同（n=3 和 n=610 都比對過，包含拓撲）、頻譜 PNG 逐位元相同（當時的版本；之後改了 pad_mode，見文末「追加」）、舊版 class weight 確實錯位、TFLite I/O 和 op 數量與參考模型一致、超參數和舊訓練腳本一致、`ReduceLROnPlateau` 會實際觸發（0.001 → 0.0003）。
 
 ## 追加（2026-10-23）：STFT 補值方式和 Android app 不一致
 
-整理兩個 Android app 時，把 app 端的 JLibrosa 和這裡的 `utils/audio.melspec` 逐像素比對，發現**最後一個 frame**不同：
+整理兩個 Android app 時，把 app 端的 JLibrosa 和這裡的 `utils/audio.melspec` 逐像素比對，發現**第一個和最後一個 frame**不同（`center=True` 時兩端都要補值）：
 - librosa 從 **0.9.0（2022-02-07）** 起把 `stft` / `melspectrogram` 的預設 `pad_mode` 從 `'reflect'` 改成 `'constant'`（已從 0.8.1 / 0.9.0 / 0.9.1 / 0.9.2 的原始碼確認）。
 - JLibrosa（兩個 app）用 `'reflect'`。
 - 峰值常落在第 257 個 frame（之後會被裁掉），而 dB 以峰值當 ref，所以補值方式會影響整張圖。用 `'constant'` 和 app 比較時最大誤差可達 187（0–255）。
 
-**2022 年的模型是哪一種？無法確定。** 論文期間 0.8.1 和 0.9.x 都有可能。拿 repo 內 4 張 2022 年的 PNG 比對邊緣特徵（每列 col0 − col1 的中位數）：2022 年的圖是 1.5 / -2 / -4 / -2；用現有錄音在 reflect 下的中位數是 -1，constant 是 -5。看起來稍微偏向 reflect，但樣本太少，不能當結論。
+**2022 年的模型是哪一種？無法確定。** 論文期間 0.8.1 和 0.9.x 都有可能。拿 repo 內 4 張 2022 年的 PNG 比對邊緣特徵（每列 col0 − col1 的中位數）：2022 年的圖是 1.5 / -2 / -4 / -2；用現有錄音在 reflect 下的中位數是 -1，constant 是 -5。對抗性驗證用 334 張圖的經驗分布估計，這 4 個值在 reflect 下出現的機率大約是 constant 的 100 倍，所以**偏向 reflect**。但只有 4 張、而且來源錄音不在 repo 裡、還假設彼此獨立，所以仍然不當成定論。
 
 **處理**：新增 `config.SPEC_PAD_MODE = 'reflect'`，經 `extract_specs.py` 傳到 `melspec` / `stft`，讓訓練端和 app 一致，也不再受 librosa 版本的預設值影響。
 - 驗證：把 `SPEC_PAD_MODE` 設成 `'constant'` 時，輸出和舊 `spec.py`（同樣的 librosa 1.0）334 張逐位元相同，代表只有補值方式改變；設成 `'reflect'` 時輸出和 app 端（修正後的 JLibrosa）的誤差 ≤ 1。
 - 如果知道 2022 年用的是 librosa ≥ 0.9，而且要用舊模型繼續訓練，可以改回 `'constant'`，但 app 端也要跟著改。
+- 和 app 一致的前提是 app 已經套用 2026-10-23 的特徵擷取修正（dB 截斷、`amin`、`normalize`、pre-emphasis），舊版 app 本來就和訓練端不一致。
+
+Code review 後的追加修正：`requirements.txt` 把 librosa 鎖在實測的 1.0.0（避免其他預設值再變）；`config.py` 註明 pad_mode 不是論文已知的值；README 註明重新抽頻譜前要清空 `data/specs/`、`data/noise/`（檔名含訊噪比，不會被覆蓋）；`librosa.core.magphase` 改成 `librosa.magphase`。
+判定不修：「先算 dB（以峰值為 ref）再裁掉第 257 個 frame」是對補值方式這麼敏感的根本原因，但改掉它會讓訓練端和 app 兩邊的頻譜都變，現有模型就對不上了；`melspec` 的預設值和 config 重複，因為 `utils/audio.py` 原本就不依賴 config，且只有 `extract_specs.py` 一個呼叫端。
 
 ## 未來可以做的（這次沒做）
 - 把資料增強真的接進訓練（`data/noise/` 混音、vertical roll）。

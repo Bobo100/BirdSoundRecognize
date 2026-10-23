@@ -83,6 +83,8 @@ python convert_mp3.py path/to/mp3_folder        # writes to data/audio/
 python extract_specs.py
 ```
 
+Filenames contain the signal-to-noise ratio, so re-running after changing spectrogram settings does not overwrite old images: empty `data/specs/` and `data/noise/` first.
+
 ### 3. Train
 
 ```bash
