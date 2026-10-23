@@ -31,6 +31,7 @@ def getSpecs(path):
                                     fmin=cfg.SPEC_FMIN,
                                     fmax=cfg.SPEC_FMAX,
                                     spec_type=cfg.SPEC_TYPE,
+                                    pad_mode=cfg.SPEC_PAD_MODE,
                                     shape=(cfg.IM_SIZE[1], cfg.IM_SIZE[0])):
 
         # Determine signal to noise ratio

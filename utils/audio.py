@@ -35,7 +35,7 @@ def splitSignal(sig, rate, seconds, overlap, minlen):
 
     return sig_splits
 
-def melspec(sig, rate, shape=(128, 256), fmin=500, fmax=15000, normalize=True, preemphasis=0.95):
+def melspec(sig, rate, shape=(128, 256), fmin=500, fmax=15000, normalize=True, preemphasis=0.95, pad_mode='reflect'):
 
     # shape = (height, width) in pixels
 
@@ -52,7 +52,7 @@ def melspec(sig, rate, shape=(128, 256), fmin=500, fmax=15000, normalize=True, p
         sig = np.append(sig[0], sig[1:] - preemphasis * sig[:-1])
 
     # Librosa mel-spectrum
-    melspec = librosa.feature.melspectrogram(y=sig, sr=SAMPLE_RATE, hop_length=HOP_LEN, n_fft=N_FFT, n_mels=N_MELS, fmax=FMAX, fmin=FMIN, power=1.0)
+    melspec = librosa.feature.melspectrogram(y=sig, sr=SAMPLE_RATE, hop_length=HOP_LEN, n_fft=N_FFT, n_mels=N_MELS, fmax=FMAX, fmin=FMIN, power=1.0, pad_mode=pad_mode)
 
     # Convert power spec to dB scale (compute dB relative to peak power)
     melspec = librosa.amplitude_to_db(melspec, ref=np.max, top_db=80)
@@ -73,7 +73,7 @@ def melspec(sig, rate, shape=(128, 256), fmin=500, fmax=15000, normalize=True, p
 
     return melspec.astype('float32')
 
-def stft(sig, rate, shape=(128, 256), fmin=500, fmax=15000, normalize=True):
+def stft(sig, rate, shape=(128, 256), fmin=500, fmax=15000, normalize=True, pad_mode='reflect'):
 
     # shape = (height, width) in pixels
 
@@ -84,7 +84,7 @@ def stft(sig, rate, shape=(128, 256), fmin=500, fmax=15000, normalize=True):
     HOP_LEN = len(sig) // (shape[1] - 1)
 
     # Librosa stft-spectrum
-    spec = librosa.core.stft(sig, hop_length=HOP_LEN, n_fft=N_FFT, window='hamming')
+    spec = librosa.stft(sig, hop_length=HOP_LEN, n_fft=N_FFT, window='hamming', pad_mode=pad_mode)
 
     # Convert power spec to dB scale (compute dB relative to peak power)
     spec = librosa.amplitude_to_db(librosa.core.magphase(spec)[0], ref=np.max, top_db=80)

@@ -110,6 +110,19 @@ PR 開出後補做了 code review 和對抗性驗證（另開一個獨立驗證�
 ### 對抗性驗證確認成立的宣稱
 模型架構逐層相同（n=3 和 n=610 都比對過，包含拓撲）、頻譜 PNG 逐位元相同、舊版 class weight 確實錯位、TFLite I/O 和 op 數量與參考模型一致、超參數和舊訓練腳本一致、`ReduceLROnPlateau` 會實際觸發（0.001 → 0.0003）。
 
+## 追加（2026-10-23）：STFT 補值方式和 Android app 不一致
+
+整理兩個 Android app 時，把 app 端的 JLibrosa 和這裡的 `utils/audio.melspec` 逐像素比對，發現**最後一個 frame**不同：
+- librosa 從 **0.9.0（2022-02-07）** 起把 `stft` / `melspectrogram` 的預設 `pad_mode` 從 `'reflect'` 改成 `'constant'`（已從 0.8.1 / 0.9.0 / 0.9.1 / 0.9.2 的原始碼確認）。
+- JLibrosa（兩個 app）用 `'reflect'`。
+- 峰值常落在第 257 個 frame（之後會被裁掉），而 dB 以峰值當 ref，所以補值方式會影響整張圖。用 `'constant'` 和 app 比較時最大誤差可達 187（0–255）。
+
+**2022 年的模型是哪一種？無法確定。** 論文期間 0.8.1 和 0.9.x 都有可能。拿 repo 內 4 張 2022 年的 PNG 比對邊緣特徵（每列 col0 − col1 的中位數）：2022 年的圖是 1.5 / -2 / -4 / -2；用現有錄音在 reflect 下的中位數是 -1，constant 是 -5。看起來稍微偏向 reflect，但樣本太少，不能當結論。
+
+**處理**：新增 `config.SPEC_PAD_MODE = 'reflect'`，經 `extract_specs.py` 傳到 `melspec` / `stft`，讓訓練端和 app 一致，也不再受 librosa 版本的預設值影響。
+- 驗證：把 `SPEC_PAD_MODE` 設成 `'constant'` 時，輸出和舊 `spec.py`（同樣的 librosa 1.0）334 張逐位元相同，代表只有補值方式改變；設成 `'reflect'` 時輸出和 app 端（修正後的 JLibrosa）的誤差 ≤ 1。
+- 如果知道 2022 年用的是 librosa ≥ 0.9，而且要用舊模型繼續訓練，可以改回 `'constant'`，但 app 端也要跟著改。
+
 ## 未來可以做的（這次沒做）
 - 把資料增強真的接進訓練（`data/noise/` 混音、vertical roll）。
 - 用修正後的 class weight 重新訓練，和 `models/resnet_0919_test` 比較準確率。
