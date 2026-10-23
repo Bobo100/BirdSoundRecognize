@@ -1,9 +1,8 @@
-# Use this file to extract spectrograms from your training set
-# which needs to be organized in subfolders representing class names.
+# Extract mel-spectrograms from config.AUDIO_PATH (one subfolder per species)
+# into config.DATASET_PATH; low-signal chunks are partly kept in config.NOISE_PATH.
 # Author: Stefan Kahl, 2018, Chemnitz University of Technology
 
 import os
-import time
 
 import numpy as np
 import cv2
@@ -19,7 +18,7 @@ RANDOM = cfg.getRandomState()
 
 ######################### SPEC ##########################
 def getSpecs(path):
-    
+
     specs = []
     noise = []
 
@@ -32,6 +31,7 @@ def getSpecs(path):
                                     fmin=cfg.SPEC_FMIN,
                                     fmax=cfg.SPEC_FMAX,
                                     spec_type=cfg.SPEC_TYPE,
+                                    pad_mode=cfg.SPEC_PAD_MODE,
                                     shape=(cfg.IM_SIZE[1], cfg.IM_SIZE[0])):
 
         # Determine signal to noise ratio
@@ -47,35 +47,30 @@ def getSpecs(path):
 def parseDataset():
 
     # List of classes, subfolders as class names
-    # CLASSES = [c for c in sorted(os.listdir(os.path.join(cfg.TRAINSET_PATH, 'train')))]
-    CLASSES = [c for c in sorted(os.listdir(os.path.join(cfg.TRAINSET_PATH, cfg.AUDIO_FOLDER)))]
+    CLASSES = sorted(c for c in os.listdir(cfg.AUDIO_PATH) if os.path.isdir(os.path.join(cfg.AUDIO_PATH, c)))
 
     # Parse every class
-    for c in CLASSES[0:]:
-        
+    for c in CLASSES:
+
         print(c)
-        
+
         # List all audio files
-        # afiles = [f for f in sorted(os.listdir(os.path.join(cfg.TRAINSET_PATH, 'train', c)))]
-        afiles = [f for f in sorted(os.listdir(os.path.join(cfg.TRAINSET_PATH, cfg.AUDIO_FOLDER, c)))]
+        afiles = sorted(os.listdir(os.path.join(cfg.AUDIO_PATH, c)))
+        if not afiles:
+            continue
 
         # Calculate maximum specs per file
         max_specs = cfg.MAX_SPECS_PER_CLASS // len(afiles) + 1
-                
+
         # Get specs for every audio file
-        for i in range(len(afiles)):
+        for afile in afiles:
 
             spec_cnt = 0
 
             try:
 
-                # Stats
-                # print(i + 1, '/', len(afiles), c, afiles[i], end=' ')
-
                 # Get specs and signal to noise ratios
-                # specs, noise = getSpecs(os.path.join(cfg.TRAINSET_PATH, 'train', c, afiles[i]))
-                specs, noise = getSpecs(os.path.join(cfg.TRAINSET_PATH, cfg.AUDIO_FOLDER, c, afiles[i]))
-                # print("test")
+                specs, noise = getSpecs(os.path.join(cfg.AUDIO_PATH, c, afile))
 
                 # Save specs if it contains signal
                 for s in range(len(specs)):
@@ -86,47 +81,35 @@ def parseDataset():
 
                     # Above SIGNAL_THRESHOLD?
                     if noise[s] >= cfg.SPEC_SIGNAL_THRESHOLD:
-                        # Create target path for accepted specs
                         filepath = os.path.join(cfg.DATASET_PATH, c)
-                        if not os.path.exists(filepath):
-                            os.makedirs(filepath)
 
                         # Count specs
                         spec_cnt += 1
 
+                    # Rejected specs: we don't want to save every sample
+                    elif RANDOM.choice([True, False], p=[cfg.NOISE_SAVE_PROBABILITY, 1 - cfg.NOISE_SAVE_PROBABILITY]):
+                        filepath = cfg.NOISE_PATH
+
                     else:
+                        filepath = None
 
-                        # Create target path for rejected specs -
-                        # but we don't want to save every sample (only 10%)
-                        if RANDOM.choice([True, False], p=[0.1, 0.90]):
-                            filepath = os.path.join(cfg.NOISE_PATH)
-                            if not os.path.exists(filepath):
-                                os.makedirs(filepath)
-                        else:
-                            filepath = None
-                    
                     if filepath:
-                        # Filename contains s2n-ratio
-                        filename = str(int(noise[s] * 10000)).zfill(4) + '_' + afiles[i].split('.')[0] + '_' + str(s).zfill(3)
+                        os.makedirs(filepath, exist_ok=True)
 
-                        # Write to HDD
-                        # gray_three_channel = cv2.cvtColor(specs[s] * 255.0, cv2.COLOR_GRAY2BGR)
-                        # cv2.imwrite(os.path.join(filepath, filename + '.png'), gray_three_channel)
+                        # Filename contains s2n-ratio
+                        filename = str(int(noise[s] * 10000)).zfill(4) + '_' + os.path.splitext(afile)[0] + '_' + str(s).zfill(3)
 
                         cv2.imwrite(os.path.join(filepath, filename + '.png'), specs[s] * 255.0)
-                        
-                                                
+
                     # Do we have enough specs already?
                     if spec_cnt >= max_specs:
                         break
 
                 # Stats
-                log.i((spec_cnt, 'specs'))       
+                log.i((spec_cnt, 'specs'))
 
-            except:
-                log.e((spec_cnt, 'specs', 'ERROR DURING SPEC EXTRACT'))
-                # continue
-
+            except Exception as e:
+                log.e((spec_cnt, 'specs', 'ERROR DURING SPEC EXTRACT', afile, e))
 
 
 if __name__ == '__main__':

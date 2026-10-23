@@ -1,0 +1,160 @@
+# 2026-10-22 專案結構重整
+
+## 背景
+
+這是 2022 碩論時期的研究程式，原本是從 [BirdCLEF-Baseline](https://github.com/kahst/BirdCLEF-Baseline)（Lasagne 版）改寫成 Keras。
+改寫過程留下很多舊版殘骸，加上 README 是事後補寫的，導致「文件說的」和「程式實際做的」不一致。
+這次整理的目標：**結構清楚、文件誠實、能在任何作業系統重現**，但**不改變模型架構與輸入格式**（Android app 仍要能直接使用匯出的 TFLite）。
+
+## 發現的問題
+
+### 1. class weight 套到錯的類別（實際 bug）
+- `model_details.class_weights()` 依 `train_ds.file_paths` 的順序統計每類數量。
+  `image_dataset_from_directory(shuffle=True)` 的 `file_paths` 是**打亂後**的順序，所以 dict 的鍵順序是隨機的。
+- `create_class_weight()` 把 dict 第 i 個鍵當成 label index `i`，但 Keras 的 label index 是依 `class_names` 字母排序。
+  兩者不一致 → 權重被套到錯的鳥種。
+- 另外用 `'\\'` 切路徑取類別名，非 Windows 系統上每個檔案都被當成獨立類別。
+- **影響**：2022 年論文中的模型是用錯位的 class weight 訓練的。
+
+### 2. README 與程式行為不符
+| README 原本寫 | 程式實際行為 |
+|---|---|
+| `config.py` 是唯一設定來源 | 訓練腳本完全沒 import `config`，參數寫死在程式裡 |
+| Adam + cosine LR schedule | Nadam + `ReduceLROnPlateau` |
+| 60 epochs、early stopping 10 | 迴圈 99 次 × `fit(epochs=1)`，沒有 early stopping |
+| roll / noise 資料增強 | 訓練時沒有任何增強 |
+| 輸出到 `snapshots/`、`BirdCLEF_Logfile.txt` | 實際輸出到 `my-model-save/resnet/<name>/` |
+| 會爬 xeno-canto、有 EfficientNet 版本 | repo 中沒有這些程式 |
+
+### 3. `ReduceLROnPlateau` 從未生效
+每次 `fit` 只跑 1 個 epoch，callback 狀態每輪重置，`patience=5` 永遠達不到。
+
+### 4. 只能在 Windows 跑
+- 寫死 `"\\?\"` 長路徑前綴、`'error_message\...'` 反斜線路徑。
+- `distutils`（Python 3.12 已移除）、`keras.utils.vis_utils`（新版 Keras 已移除）。
+
+### 5. 版控雜物與死碼
+- `__pycache__/*.pyc`、`*.py.bak` 被 commit，沒有 `.gitignore`、沒有 `requirements.txt`。
+- 未使用的 Lasagne 殘留：`utils/batch_generator.py`、`stats.py`、`metrics.py`、`image.py`。
+- `model_details.py` 中未使用的函式：`class_weights2`、`class_weights_v2`、`save_model_v2`、`preprocess_image` 等。
+- IDE 自動補的無用 import：`cProfile.label`、`ast.Param`、`tabnanny.check`、`typing_extensions.runtime`。
+- `config.py` 大半是 BirdCLEF 測試 / 增強 / Lasagne 模型的設定，沒有任何程式讀取。
+
+## 做了什麼
+
+### 結構
+```
+舊                                          新
+spec.py                                  →  extract_specs.py
+dataset-download/mp3_to_wav.py           →  convert_mp3.py（改用命令列參數）
+mytrain_resnet18_ver1.py                 →  train.py（流程） + model.py（架構）
+model_details.py                         →  utils/training.py（只留用得到的）
+dataset-download/dataset_input_folder_name/   →  data/audio/
+dataset-download/dataset_output_folder_name/  →  data/specs/
+dataset-download/dataset_output_folder_name_new_noise/ → data/noise/
+my-model-save/resnet/resnet_0919_test/   →  models/resnet_0919_test/
+```
+原本提案是把前處理放到 `preprocess/` 子資料夾，最後改成放根目錄：子資料夾內的腳本要用 `python -m` 執行才找得到 `config`，對一個研究 repo 來說多此一舉。
+
+### 行為修正
+- **class weight**：改用 `os.path` 取類別名，並依 `class_names` 對應 index，跟 `file_paths` 順序無關。
+- **訓練流程**：改成單次 `model.fit(epochs=EPOCHS, initial_epoch=...)`。
+  - 續訓：自動從 `checkpoints/` 找最新的 epoch 繼續。
+  - 紀錄：`CSVLogger` 取代自製的 pkl 搬移 / csv 寫入。
+  - `ReduceLROnPlateau` 因此能正常生效。
+- **設定**：`train.py` 改讀 `config.py`；`config.py` 的值設成**原本訓練腳本實際使用的值**（Nadam、val split 0.2、`FILTERS=[16,32,64,128]`、`RESNET_K=2`、`RESNET_N=2`…）。
+- **Early stopping**：新增 `EARLY_STOPPING_PATIENCE` 設定，預設 `None`（關閉），與原本行為一致。
+- **路徑**：全部改成 `os.path`，移除 Windows 專用寫法。若 Windows 上遇到長路徑問題，請開啟系統的 `LongPathsEnabled`。
+- **`utils/audio.py` 小修**：`melspec` 中 `mlspec` 拼字錯誤（全零頻譜時寫錯變數，實際無影響）；`stft` 的 `window='hamm'` 改成 `'hamming'`（新版 scipy 已移除別名）；`signal2noise` 用 `spec.size` 取代 try/except 計算面積（結果相同）。
+- **`convert_mp3.py`**：改用命令列參數指定資料夾，移除沒被呼叫的 `remove_bird_folder()`。
+- **相依套件**：更新到目前的 TensorFlow / Keras 3。checkpoint 由 SavedModel 資料夾（`.ckpt/`）改成 `.keras` 檔（Keras 3 規定的格式）。
+
+### 刻意保留不變
+- 模型架構逐層相同（已比對新舊版的層設定與參數量）。
+- 輸入格式：`128×256×1` 灰階、像素值 **0–255、不做 rescale**。Android app 端就是餵 0–255，若改成正規化 app 會壞掉。
+- 頻譜產生參數（44.1 kHz、1 秒切片、0.25 秒 overlap、500–15000 Hz mel）。（STFT 的邊界補值方式之後有明確指定，見文末「追加」）
+- 雜訊片段仍會存到 `data/noise/`（原設計用於增強），但目前訓練沒有用到，README 已註明。
+
+## 驗證方式（TensorFlow 2.21 / Keras 3.15 / Python 3.13）
+- **模型架構**：用舊版 `resnet_18()` 與新版 `build_resnet()` 各建一個模型，59 層的設定逐層相同、參數量都是 2,796,355。
+- **頻譜**：用 repo 內的範例音檔，舊版 `spec.py` 與新版 `extract_specs.py` 產生的 334 張 PNG 逐位元相同（同樣的 librosa 1.0）。⚠️ 2026-10-23 起預設 `SPEC_PAD_MODE='reflect'`，輸出已經不同；設成 `'constant'` 才會和這裡的結果相同，見文末「追加」。
+- **訓練流程**：範例資料跑 2 個 epoch → 改 `EPOCHS=3` 再執行，確認從 `weights.02.keras` 續訓、`training_log.csv` 接續、TFLite 輸入 `[1,128,256,1]` 與參考模型一致。
+- **class weight bug 重現**：類別 A/B/C 各 10/1000/50 張並打亂。舊程式的 dict 順序變成 `B, C, A`，最稀少的 A（index 0）拿到權重 1.0；新程式給 A 2.77、B 1.0、C 1.16。
+
+## Code review 與對抗性驗證後的修正
+
+PR 開出後補做了 code review 和對抗性驗證（另開一個獨立驗證者，不給它結論，只要求它想辦法推翻 PR 的每一項宣稱）。
+
+### 修正
+| 來源 | 問題 | 修正 |
+|---|---|---|
+| review | 預設 `RUN_NAME='resnet_0919_test'`，一跑訓練就會蓋掉 commit 進來的參考模型 | 預設改成 `resnet_run` |
+| review + 對抗 | 續訓時資料集的類別若有增減／改名，checkpoint 的輸出會靜默對到錯的鳥種（和 class weight bug 同一類問題） | 續訓前比對輸出數量和已存的 `*_labels.txt`，不一致就停止並提示換 `RUN_NAME` |
+| review | `CSVLogger` 不管是不是新的訓練都用 append，會混到舊紀錄 | 只有續訓時才 append |
+| review | 訓練集裡沒有樣本的類別拿到最小權重 1.0 | 當作 1 個樣本計算，因此拿到最大權重 |
+| review | `tensorflow>=2.16` 的早期版本無法把 Keras 3 模型轉成 TFLite | 下限改成實測過的 2.21 |
+| review | 每個 epoch 直接覆寫 tflite，中斷時可能留下壞檔 | 先寫暫存檔，再用 `os.replace` |
+| review | 自訂 `FILTERS` 讓 stride 2 時通道數不變的話，shortcut 形狀會對不上 | stride≠1 時也做投影（預設設定的架構不變，已重新比對） |
+| review | 輸入資料夾根目錄的 mp3 會轉到 `data/audio/` 根目錄，然後被忽略 | 略過並提示放進物種子資料夾 |
+| review | 轉檔失敗會留下不完整的 wav，下次也不會重試 | 失敗時刪掉 |
+| 對抗 | **Python 3.13 移除了 `audioop`，pydub 一 import 就失敗** | requirements 加上 `audioop-lts` |
+| 對抗 | 輸入路徑不存在時仍印出 done、回傳成功 | 改成報錯 |
+| 對抗 | 舊版 `use_gpu()` 會設定 `CUDA_VISIBLE_DEVICES='0'`，新版漏掉了 | 加回來，改用 `setdefault`，可以從外部覆寫 |
+
+### 判定不修
+- checkpoint 檔名的 regex 和 `CHECKPOINT_PATTERN` 各寫一份；最新的 checkpoint 損壞時不會退回前一個 → 很少遇到，加了會增加複雜度。
+- 轉檔時按 Ctrl-C 留下的不完整 wav、錯誤 log 重複寫入 → 舊版也一樣，影響很小。
+- TFLite 轉換時會印出大量 `TensorSpec` 訊息 → 只是輸出太多，不影響功能。
+- `data/specs/` 內附的 3 張範例圖來自不在 `data/audio/` 的錄音 → 只是範例，執行 `extract_specs.py` 後就會被正常資料蓋過去。
+
+### 對抗性驗證確認成立的宣稱
+模型架構逐層相同（n=3 和 n=610 都比對過，包含拓撲）、頻譜 PNG 逐位元相同（當時的版本；之後改了 pad_mode，見文末「追加」）、舊版 class weight 確實錯位、TFLite I/O 和 op 數量與參考模型一致、超參數和舊訓練腳本一致、`ReduceLROnPlateau` 會實際觸發（0.001 → 0.0003）。
+
+## 追加（2026-10-23）：STFT 補值方式和 Android app 不一致
+
+整理兩個 Android app 時，把 app 端的 JLibrosa 和這裡的 `utils/audio.melspec` 逐像素比對，發現**第一個和最後一個 frame**不同（`center=True` 時兩端都要補值）：
+- librosa 從 **0.9.0（2022-02-07）** 起把 `stft` / `melspectrogram` 的預設 `pad_mode` 從 `'reflect'` 改成 `'constant'`（已從 0.8.1 / 0.9.0 / 0.9.1 / 0.9.2 的原始碼確認）。
+- JLibrosa（兩個 app）用 `'reflect'`。
+- 峰值常落在第 257 個 frame（之後會被裁掉），而 dB 以峰值當 ref，所以補值方式會影響整張圖。用 `'constant'` 和 app 比較時最大誤差可達 187（0–255）。
+
+**2022 年的模型是哪一種？無法確定。** 論文期間 0.8.1 和 0.9.x 都有可能。拿 repo 內 4 張 2022 年的 PNG 比對邊緣特徵（每列 col0 − col1 的中位數）：2022 年的圖是 1.5 / -2 / -4 / -2；用現有錄音在 reflect 下的中位數是 -1，constant 是 -5。對抗性驗證用 334 張圖的經驗分布估計，這 4 個值在 reflect 下出現的機率大約是 constant 的 100 倍，所以**偏向 reflect**。但只有 4 張、而且來源錄音不在 repo 裡、還假設彼此獨立，所以仍然不當成定論。
+
+**處理**：新增 `config.SPEC_PAD_MODE = 'reflect'`，經 `extract_specs.py` 傳到 `melspec` / `stft`，讓訓練端和 app 一致，也不再受 librosa 版本的預設值影響。
+- 驗證：把 `SPEC_PAD_MODE` 設成 `'constant'` 時，輸出和舊 `spec.py`（同樣的 librosa 1.0）334 張逐位元相同，代表只有補值方式改變；設成 `'reflect'` 時輸出和 app 端（修正後的 JLibrosa）的誤差 ≤ 1。
+- 如果知道 2022 年用的是 librosa ≥ 0.9，而且要用舊模型繼續訓練，可以改回 `'constant'`，但 app 端也要跟著改。
+- 和 app 一致的前提是 app 已經套用 2026-10-23 的特徵擷取修正（dB 截斷、`amin`、`normalize`、pre-emphasis），舊版 app 本來就和訓練端不一致。
+
+Code review 後的追加修正：`requirements.txt` 把 librosa 鎖在實測的 1.0.0（避免其他預設值再變）；`config.py` 註明 pad_mode 不是論文已知的值；README 註明重新抽頻譜前要清空 `data/specs/`、`data/noise/`（檔名含訊噪比，不會被覆蓋）；`librosa.core.magphase` 改成 `librosa.magphase`。
+判定不修：「先算 dB（以峰值為 ref）再裁掉第 257 個 frame」是對補值方式這麼敏感的根本原因，但改掉它會讓訓練端和 app 兩邊的頻譜都變，現有模型就對不上了；`melspec` 的預設值和 config 重複，因為 `utils/audio.py` 原本就不依賴 config，且只有 `extract_specs.py` 一個呼叫端。
+
+## 未來可以做的（這次沒做）
+- 把資料增強真的接進訓練（`data/noise/` 混音、vertical roll）。
+- 用修正後的 class weight 重新訓練，和 `models/resnet_0919_test` 比較準確率。
+- 加測試 / CI。
+
+## 追加（2026-10-23）：commit 與 PR 格式
+
+新增 `CONTRIBUTING.md` 和 `.github/pull_request_template.md`，三個 repo 內容相同：
+- commit 採用 [Conventional Commits](https://www.conventionalcommits.org/)（`type(scope): subject`，英文、祈使句、72 字元以內，body 說明原因）。
+- PR 標題用同樣的格式，但最多 65 字元（squash 時 GitHub 會加上 ` (#N)`），內容分成 Summary / Changes / Verification / Test plan。repo 設定裡的 squash 預設訊息要選「Pull request title and description」。
+- 這次三個分支上的 commit 訊息也照這個規則整理過（只改訊息、不改內容），因為分支是新建、尚未合併的。
+- 工作流程：分支（worktree）→ `docs/plan` → review 與對抗性驗證 → PR → **squash merge**。
+
+**不重寫 main 的舊歷史。** main 上的 commit 都已公開，改寫要 force-push，會讓所有 clone 對不上；而且舊訊息多半是「Update README.md」，重寫也補不回當時的原因。改用 squash merge，讓之後 main 上每個 PR 都是一個格式正確的 commit，分支上的中間 commit 不會留在 main。
+
+## 狀態
+
+**完成（2026-10-23）**：所有修改都已驗證，以 [PR #1](https://github.com/Bobo100/BirdSoundRecognize/pull/1) squash merge 合併到 `main`。
+
+已完成：
+- [x] 專案結構重整（scripts、`data/`、`models/`、`.gitignore`、`requirements.txt`）
+- [x] class weight 錯位修正
+- [x] `train.py` 讀取 `config.py`、可續訓、`ReduceLROnPlateau` 生效、不覆蓋參考模型
+- [x] 跨平台路徑、Keras 3、Python 3.13（`audioop-lts`）
+- [x] STFT `pad_mode` 明確設定為 `reflect`、librosa 鎖定 1.0.0
+- [x] README 改寫、`CONTRIBUTING.md`、PR 範本
+
+尚未完成（後續另開 PR）：
+- [ ] 用修正後的 class weight 和 `reflect` 重新訓練，和 `models/resnet_0919_test` 比較準確率
+- [ ] 資料增強接進訓練（`data/noise/`）
+- [ ] 加測試 / CI

@@ -1,258 +1,109 @@
-# This file stores all settings used for spectrogram extraction, training and testing
-# Author: Stefan Kahl, 2018, Chemnitz University of Technology
+# All settings for spectrogram extraction and training.
+# Spectrogram settings adapted from Stefan Kahl's BirdCLEF-Baseline (2018).
+# Values below are the ones the 2022 thesis model was actually trained with.
 
 import os
+
 import numpy as np
 
+BASE_PATH = os.path.dirname(os.path.abspath(__file__))
+
 # Fixed random seed
+RANDOM_SEED = 1337
+
 def getRandomState():
-
-    RANDOM_SEED = 1337
-    RANDOM = np.random.RandomState(RANDOM_SEED)
-
-    return RANDOM
+    return np.random.RandomState(RANDOM_SEED)
 
 ########################  DATASET  ########################
 
-# Path settings (train audio and xml files, specs, test audio files and json metadata)
-# Use 'sort_data.py' to organize the BirdCLEF dataset accordingly
-# Extract the BirdCLEF TrainingSet data into TRAINSET_PATH
-# TRAINSET_PATH = 'datasets/TrainingSet/'
-# DATASET_PATH = os.path.join(TRAINSET_PATH, 'spec')
-# NOISE_PATH = os.path.join(TRAINSET_PATH, 'noise')
-# METADATA_PATH = os.path.join(TRAINSET_PATH, 'metadata')
+# Input wav files, one subfolder per species
+AUDIO_PATH = os.path.join(BASE_PATH, 'data', 'audio')
 
-TRAINSET_PATH = 'dataset-download/'
-# input folder
-AUDIO_FOLDER = "dataset_input_folder_name"
-# output folder
-DATASET_PATH = os.path.join(TRAINSET_PATH, 'dataset_output_folder_name')
-NOISE_PATH = os.path.join(TRAINSET_PATH, 'dataset_output_folder_name_new_noise')
-METADATA_PATH = os.path.join(TRAINSET_PATH, 'metadata')
+# Output spectrograms, one subfolder per species
+DATASET_PATH = os.path.join(BASE_PATH, 'data', 'specs')
 
-
-# Set this path to 'val', 'BirdCLEF2018MonophoneTest' or 'BirdCLEF2018SoundscapesTest' depending on which dataset you want to analyze
-TESTSET_PATH = os.path.join(TRAINSET_PATH, 'val')
-
-# Define if you want to 'copy', 'move' or 'symlink' audio files
-# If you use 'symlink' make sure your OS does support symbolic links and define TRAINSET_PATH absolute
-SORT_MODE = 'copy'
-
-# Maximum number of classes to use (None = no limit)
-MAX_CLASSES = None
-
-# Use this whitelist to pre-select species; leave the list empty if you want to include all species
-CLASS_WHITELIST = []
-
-# If not sorted, using only a subset of classes (MAX_CLASSES) will select classes randomly
-SORT_CLASSES_ALPHABETICALLY = False  
-
-# Specify minimum and maximum amount of samples (specs) per class
-MIN_SAMPLES_PER_CLASS = -1   # -1 = no minimum                                      
-MAX_SAMPLES_PER_CLASS = None # None = no limit
-
-# Specify the signal-to-noise interval you want to pick samples from (filename contains value)
-S2N_INTERVAL = [50, 2500]
-
-# Size of validation split (0.05 = 5%)
-VAL_SPLIT = 0.05
+# Rejected (low signal) spectrograms, kept for future noise augmentation
+NOISE_PATH = os.path.join(BASE_PATH, 'data', 'noise')
 
 ######################  SPECTROGRAMS  ######################
 
 # Type of frequency scaling, mel-scale = 'melspec', linear scale = 'linear'
 SPEC_TYPE = 'melspec'
-# SPEC_TYPE = 'linear'
-
 
 # Sample rate for recordings, other sampling rates will force re-sampling
 SAMPLE_RATE = 44100
 
-# Specify min and max frequency for low and high pass
+# Min and max frequency for low and high pass
 SPEC_FMIN = 500
 SPEC_FMAX = 15000
 
-# Define length of chunks for spec generation, overlap of chunks and chunk min length
+# Length of chunks for spec generation, overlap of chunks and chunk min length (seconds)
 SPEC_LENGTH = 1.0
 SPEC_OVERLAP = 0.25
 SPEC_MINLEN = 1.0
 
+# STFT edge padding. Unlike the values above, this one is NOT known from the thesis run:
+# librosa's default changed from 'reflect' to 'constant' in 0.9.0 (Feb 2022). 'reflect' matches
+# the Android apps' JLibrosa (with the 2026-10-23 feature fixes); see docs/plan/2026-10-22-restructure.md
+SPEC_PAD_MODE = 'reflect'
+
 # Threshold for distinction between noise and signal
 SPEC_SIGNAL_THRESHOLD = 0.0001
 
-# Limit the amount of specs per class when extracting spectrograms (None = no limit)
+# Share of rejected chunks saved to NOISE_PATH
+NOISE_SAVE_PROBABILITY = 0.1
+
+# Limit the amount of specs per class when extracting spectrograms
 MAX_SPECS_PER_CLASS = 2000
 
-#########################  IMAGE  #########################
-
-# Number of channels
-IM_DIM = 1
-
-# Image size (width, height), should be the same as spectrogram shape
+# Image size (width, height); the model input is (height, width, 1)
 IM_SIZE = (256, 128)
-
-# Resize mode, options are:
-# 'crop': Crops from center of the image
-# 'cropRandom': Crops from random position
-# 'squeeze': Ignores aspect ratio when resizing
-# 'fill': Fills with random noise to keep aspect ratio
-RESIZE_MODE = 'squeeze'
-
-# Normalization mode (values between -1 and 1)
-ZERO_CENTERED_NORMALIZATION = True
-
-# List of rejected specs, which we want to use as noise samples during augmentation
-if os.path.exists(NOISE_PATH):
-    NOISE_SAMPLES = [os.path.join(NOISE_PATH, s) for s in os.listdir(NOISE_PATH)]
-else:
-    NOISE_SAMPLES = []
-
-# Image augmentation, uncomment to use; specify mode + value
-IM_AUGMENTATION = {#'roll_h':0.5,                   # Horizontal roll
-                   'roll_v':0.15,                   # Vertical roll
-                   #'crop':[0.1, 0.0, 0.05, 0.0],   # Random crop - top, left, bottom, right
-                   #'noise':0.05,                   # Gaussian noise
-                   'add':NOISE_SAMPLES,             # List of specs to add to original sample
-                   #'brightness':0.15,              # Adjust brightness
-                   #'dropout':0.25,                 # Dropout single pixels
-                   #'blackout':0.10,                # Dropout entire regions
-                   #'blur':3,                       # Image blur
-                   #'zoom':0.25,                    # Random zoom (equally cropping each side)
-                   #'rotate':10,                    # Rotate by angle
-                   #'multiply':0.25,                # Multiply pixel values
-                   #'mean':True                     # Substract mean from image
-                  }
-
-# Maximum number of random augmentations per image
-# Each try has 50% chance of success; we do not use duplicate augmentations
-AUGMENTATION_COUNT = 2
-
-# Probability for image augmentation
-AUGMENTATION_PROBABILITY = 0.5
 
 #########################  MODEL  #########################
 
-# Changing model settings can have great impact on both, training time and accuracy
-# We are currently supporting three models 'Baseline', 'ResNet' and 'Pi'
-# You can find more Lasagne model implementations here: https://github.com/Lasagne/Recipes/tree/master/modelzoo
-MODEL_TYPE = 'ResNet'
-
-# Options are: relu, lrelu (leaky relu), vlrelu (very leaky relu), elu and identity
-NONLINEARITY = 'relu'
-
-# Number of filters in each convolutional layer group or resblock
-# You can change the number of groups or resblocks by changing the amount of
-# values in the array (adjust KERNEL_SIZES accordingly!)
-# 5 values == 5 convolutional groups or resblocks
+# Number of filters in each ResStack (one entry per stack)
 FILTERS = [16, 32, 64, 128]
 
-# Size of kernels in each convolution (we use 'same' padding)
-KERNEL_SIZES = [(3, 3), (3, 3), (3, 3), (3, 3), (3, 3)]
+# Filter multiplier
+RESNET_K = 2
 
-NUM_OF_GROUPS = [1, 1, 1, 1, 1]
+# Number of ResBlocks in one ResStack
+RESNET_N = 2
 
-# Activate Batch Norm
-BATCH_NORM = True
-
-# Reduce spatial dimension with MaxPooling (True) or strided convolutions (False)
-MAX_POOLING = False
-
-# Number of dense units for PiNet
-DENSE_UNITS = 512
-
-# Specify the type of dropout
-# 'random': Standard dropout of random pixels per channel
-# 'location': Dropout same pixels across all channels
-# 'channel': Dropout of entire channels
-DROPOUT_TYPE = 'random'
-
-# Dropout probability (higher == more regularization)
-DROPOUT = 0.0
-
-# ResNet-specific settings
-RESNET_K = 2 # Filter multiplier
-RESNET_N = 2 # Number of ResBlocks in one ResStack
-
-#######################  MODEL I/O ########################
-
-# Name of current run is used as filename
-RUN_NAME = 'BirdCLEF_TUC_CLO_EXAMPLE'
-
-# Snapshot directory
-MODEL_PATH = 'snapshots/'
-
-# Filename of .pkl-file to load pre-trained model from (default = None, has to be the 'model_params'-file)
-PRETRAINED_MODEL_NAME = None
-
-# If the output size of the pre-trained model differs from the current model, set flag to False
-LOAD_OUTPUT_LAYER = True
-
-# Define list of models (.pkl-files) which serve as teacher during model distillation ([] = no teacher)
-TEACHER = []
+# Kernel size of every convolution ('same' padding)
+KERNEL_SIZE = (3, 3)
 
 #######################  TRAINING  ########################
 
-# Number of epochs to train
-EPOCHS = 60
+# Folder under models/ where checkpoints, logs and the exported model are written
+# (models/resnet_0919_test is the committed reference model; use a new name to keep it intact)
+RUN_NAME = 'resnet_run'
+MODEL_PATH = os.path.join(BASE_PATH, 'models', RUN_NAME)
 
-# Start epoch, important if you use a pre-trained model to continue training
-EPOCH_START = 1
+# Prefix of the exported files (<prefix>_model.tflite, <prefix>_labels.txt)
+EXPORT_NAME = 'resnet'
 
-# Batch size to use
+EPOCHS = 99
 BATCH_SIZE = 32
 
-# Set learning rate and schedule
-LEARNING_RATE = {'start':0.001, 'end':0.000001}
+# Share of DATASET_PATH used for validation
+VAL_SPLIT = 0.2
 
-# Options are 'step', 'linear', 'cosine', 'root', 'constant'
-# If you want to use steps, write 'step-3' for three steps
-# during training to go from start to end lr
-LR_SCHEDULE = 'cosine' 
+# Any optimizer name understood by keras, e.g. 'nadam', 'adam'
+OPTIMIZER = 'nadam'
 
-# Impact of L2 measure on loss
-L2_WEIGHT = 0
+# ReduceLROnPlateau on val_loss
+LR_REDUCE_FACTOR = 0.2
+LR_REDUCE_PATIENCE = 5
+LR_MIN = 3e-4
 
-# Optimizer options are: 'adam', 'sgd' and 'nesterov'
-OPTIMIZER = 'adam'
+# Epochs without val_loss improvement before stopping (None = disabled)
+EARLY_STOPPING_PATIENCE = None
 
-# Epochs between snapshot save
-SNAPSHOT_EPOCHS = 1
+# Class weight smoothing, see utils.training.compute_class_weights
+CLASS_WEIGHT_MU = 0.15
 
-# Epochs to wait before early stopping
-EARLY_STOPPING_WAIT = 10
-
-########################  TESTING  ########################
-
-# .pkl file of model to test (not the params-file)
-# You can specify a list of .pkl-files to test ensembles
-# All models in an ensemble must contain the same CLASSES!
-# TEST_MODELS = []
-TEST_MODELS = 'BirdCLEF_TUC_CLO_EXAMPLE_model_epoch_60.pkl'
-# BirdCLEF_TUC_CLO_EXAMPLE_model_epoch_1.pkl
-
-# Maximum amount of randomly selected files from the local validation set (None = no limit)
-MAX_TEST_FILES = 5
-
-# Limit the amount of test files per class
-MAX_TEST_SAMPLES_PER_CLASS = -1
-
-# Limit the amount of (randomly) extracted specs per file (GPU memory!)
-MAX_SPECS_PER_FILE = 128
-
-# Include background species in metric (labels need to be sci-names)
-TEST_WITH_BG_SPECIES = True
-
-# Number of predictions for soundscape interval (SPEC_LENGTH = 1.0 means we need 5 as intervals must be 5 seconds long)
-SPECS_PER_PREDICTION = 5
-
-####################  STATS AND LOG  ######################
-
-# Global vars
-STATS = {}
-DO_BREAK = False
+####################  LOG  ######################
 
 # Options for log mode are 'all', 'info', 'progress', 'error', 'result'
 LOG_MODE = 'all'
-
-# Path for final log-file
-LOG_FILE = 'BirdCLEF_Logfile.txt'
-
