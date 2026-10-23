@@ -141,3 +141,20 @@ Code review 後的追加修正：`requirements.txt` 把 librosa 鎖在實測的 
 - 工作流程：分支（worktree）→ `docs/plan` → review 與對抗性驗證 → PR → **squash merge**。
 
 **不重寫 main 的舊歷史。** main 上的 commit 都已公開，改寫要 force-push，會讓所有 clone 對不上；而且舊訊息多半是「Update README.md」，重寫也補不回當時的原因。改用 squash merge，讓之後 main 上每個 PR 都是一個格式正確的 commit，分支上的中間 commit 不會留在 main。
+
+## 狀態
+
+**完成（2026-10-23）**：所有修改都已驗證，以 [PR #1](https://github.com/Bobo100/BirdSoundRecognize/pull/1) squash merge 合併到 `main`。
+
+已完成：
+- [x] 專案結構重整（scripts、`data/`、`models/`、`.gitignore`、`requirements.txt`）
+- [x] class weight 錯位修正
+- [x] `train.py` 讀取 `config.py`、可續訓、`ReduceLROnPlateau` 生效、不覆蓋參考模型
+- [x] 跨平台路徑、Keras 3、Python 3.13（`audioop-lts`）
+- [x] STFT `pad_mode` 明確設定為 `reflect`、librosa 鎖定 1.0.0
+- [x] README 改寫、`CONTRIBUTING.md`、PR 範本
+
+尚未完成（後續另開 PR）：
+- [ ] 用修正後的 class weight 和 `reflect` 重新訓練，和 `models/resnet_0919_test` 比較準確率
+- [ ] 資料增強接進訓練（`data/noise/`）
+- [ ] 加測試 / CI
